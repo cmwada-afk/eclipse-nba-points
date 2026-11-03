@@ -93,7 +93,7 @@ def clean_players(teams):
     p["ts"] = np.where(tsa > 0, p.pts / tsa, np.nan)
 
     cols = ["season", "game_date", "game_id", "player_id", "player", "team_id", "team",
-            "opp", "opp_team_id", "home", "starter", "played", "comment", "min",
+            "opp", "opp_team_id", "home", "starter", "position", "played", "comment", "min",
             "pts", "fgm", "fga", "fg3m", "fg3a", "ftm", "fta", "oreb", "reb", "ast",
             "tov", "plus_minus", "usg", "ts"]
     return p[cols].sort_values(["game_date", "game_id", "team", "player"]).reset_index(drop=True)
