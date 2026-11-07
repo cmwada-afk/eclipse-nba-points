@@ -1,76 +1,92 @@
-"""Basic Streamlit page: pick a player, see his last 10 games.
+"""Group E points predictor — starter website.
 
-Run from the main eclipse-nba-points folder (after build_features.py):
+Run from the repo root:
+    python src/train_final.py      # once, creates app/data/
     streamlit run app/app.py
 """
+import json
 from pathlib import Path
 
-import altair as alt
 import pandas as pd
 import streamlit as st
+import xgboost as xgb
 
-ROOT = Path(__file__).resolve().parents[1]
-TABLE = ROOT / "data" / "processed" / "model_table.csv"
-COLS = ["season", "game_date", "player", "team", "opp", "home", "min", "pts", "pts_l10", "pts_szn"]
+DATA = Path(__file__).resolve().parent / "data"
 
-st.set_page_config(page_title="NBA Points Predictor", layout="wide")
+LABELS = {
+    "pts_l5": "Points, last 5 games", "pts_l10": "Points, last 10 games",
+    "pts_szn": "Season scoring average", "min_l5": "Minutes, last 5", "min_l10": "Minutes, last 10",
+    "fga_l10": "Shot attempts, last 10", "fta_l10": "Free throw attempts, last 10",
+    "fg3a_l10": "3PA, last 10", "starter_rate_l10": "Starting lately",
+    "games_played_szn": "Games played this season", "opp_drtg_l10": "Opponent defense",
+    "opp_pace_l10": "Opponent pace", "team_pace_l10": "Own team pace", "home": "Home / away",
+    "rest_days": "Days of rest", "b2b": "Back-to-back", "usg_l5": "Usage rate, last 5",
+    "usg_l10": "Usage rate, last 10", "ts_l10": "Shooting efficiency, last 10",
+    "usg_szn": "Season usage rate", "tm_out_min": "Teammates out (minutes)",
+    "tm_out_usg": "Teammates out (usage)", "tm_out_count": "Teammates out (count)",
+}
 
 
-@st.cache_data
+@st.cache_resource
 def load():
-    return pd.read_csv(TABLE, usecols=COLS, parse_dates=["game_date"])
+    meta = json.loads((DATA / "meta.json").read_text())
+    booster = xgb.Booster()
+    booster.load_model(DATA / "model.json")
+    players = pd.read_csv(DATA / "player_state.csv")
+    teams = pd.read_csv(DATA / "team_state.csv")
+    return meta, booster, players, teams
 
 
-if not TABLE.exists():
-    st.error("Can't find data/processed/model_table.csv. Run get_data.py, clean.py and "
-             "build_features.py first (see the README).")
-    st.stop()
+def predict(meta, booster, row):
+    X = pd.DataFrame([row]).reindex(columns=meta["features"])   # new features -> NaN, still runs
+    dm = xgb.DMatrix(X)
+    pred = float(booster.predict(dm)[0])
+    contribs = booster.predict(dm, pred_contribs=True)[0][:-1]   # last value is the base score
+    drivers = pd.Series(contribs, index=meta["features"])
+    r = next((r for r in meta["ranges"] if r["lo"] <= pred < r["hi"]), meta["ranges"][-1])
+    return pred, max(0, pred + r["q10"]), pred + r["q90"], drivers
 
-df = load()
+
+st.set_page_config(page_title="NBA Points Predictor", page_icon="🏀", layout="centered")
+meta, booster, players, teams = load()
 
 st.title("NBA Points Predictor")
-st.caption("Group E · Eclipse Analytics. Predictions are coming in a later assignment. "
-           "For now, pick a player to see his last 10 games.")
+st.caption(f"Eclipse Analytics · Group E · data through {meta['data_through']} · "
+           f"average miss on {meta['test_season']}: {meta['test_mae']} pts")
 
-c1, c2 = st.columns([1, 2])
-seasons = sorted(df.season.unique(), reverse=True)
-season = c1.selectbox("Season", seasons)
+c1, c2 = st.columns(2)
+player = c1.selectbox("Player", sorted(players.player), index=None, placeholder="Pick a player")
+if not player:
+    st.stop()
+p = players[players.player == player].iloc[0]
+opp = c2.selectbox("Opponent", sorted(teams.team[teams.team != p.team]))
 
-# players in that season, best scorers first (players with 10+ games ahead of short stints)
-in_season = df[df.season == season]
-stats = in_season.groupby("player").pts.agg(["mean", "size"])
-stats["regular"] = stats["size"] >= 10
-order = stats.sort_values(["regular", "mean"], ascending=False).index.tolist()
-player = c2.selectbox("Player", order, index=0)
+c3, c4 = st.columns(2)
+home = c3.radio("Where", ["Home", "Away"], horizontal=True) == "Home"
+rest = c4.slider("Days of rest", 1, 5, 2)
 
-games = in_season[in_season.player == player].sort_values("game_date")
-last10 = games.tail(10).copy()
-last10["matchup"] = last10.apply(lambda r: ("vs " if r.home == 1 else "@ ") + r.opp, axis=1)
-last10["date"] = last10.game_date.apply(lambda d: f"{d:%b} {d.day}")
-last10["label"] = last10["date"] + "  " + last10["matchup"]
+mates = players[(players.team == p.team) & (players.player != player) & (players.min_l10 >= 20)]
+out = st.multiselect("Teammates sitting out", sorted(mates.player))
+out_df = mates[mates.player.isin(out)]
 
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Last 10 avg", f"{last10.pts.mean():.1f}")
-m2.metric("Season avg", f"{games.pts.mean():.1f}")
-m3.metric("Minutes, last 10", f"{last10['min'].mean():.1f}")
-m4.metric("Team", games.team.iloc[-1])
+own, o = teams[teams.team == p.team].iloc[0], teams[teams.team == opp].iloc[0]
+row = {**p.to_dict(), "opp_drtg_l10": o.drtg_l10, "opp_pace_l10": o.pace_l10,
+       "team_pace_l10": own.pace_l10, "home": int(home), "rest_days": rest, "b2b": int(rest == 1),
+       "tm_out_min": out_df.min_l10.sum(), "tm_out_usg": out_df.usg_l10.sum(),
+       "tm_out_count": len(out_df)}
 
-st.subheader(f"{player}: last 10 games of {season}")
-order_x = last10["label"].tolist()
-bars = alt.Chart(last10).mark_bar(color="#2a78d6", cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
-    x=alt.X("label:N", sort=order_x, title=None, axis=alt.Axis(labelAngle=0)),
-    y=alt.Y("pts:Q", title="Points"),
-    tooltip=[alt.Tooltip("date:N", title="Date"), alt.Tooltip("matchup:N", title="Game"),
-             alt.Tooltip("pts:Q", title="Points"), alt.Tooltip("min:Q", title="Minutes", format=".1f")],
-)
-# value labels sit at the bottom of each bar so they never collide with the average line
-labels = alt.Chart(last10).mark_text(baseline="bottom", dy=-6, color="white", fontWeight="bold").encode(
-    x=alt.X("label:N", sort=order_x), y=alt.datum(0), text="pts:Q")
-avg = alt.Chart(pd.DataFrame({"avg": [last10.pts.mean()]})).mark_rule(
-    color="#52514e", strokeDash=[6, 4], size=2).encode(y="avg:Q")
-st.altair_chart((bars + labels + avg).properties(height=340), width="stretch")
-st.caption("Dashed line = his average over these 10 games.")
+pred, lo, hi, drivers = predict(meta, booster, row)
 
-table = last10[["date", "matchup", "min", "pts"]].round({"min": 1}).rename(
-    columns={"date": "Date", "matchup": "Game", "min": "Minutes", "pts": "Points"})
-st.dataframe(table.iloc[::-1], hide_index=True)
+st.divider()
+m1, m2, m3 = st.columns(3)
+m1.metric("Predicted points", f"{pred:.1f}")
+m2.metric("Likely range (80%)", f"{lo:.0f}–{hi:.0f}")
+m3.metric("Last 10 avg", f"{p.pts_l10:.1f}", f"{pred - p.pts_l10:+.1f} vs prediction", delta_color="off")
+
+st.subheader("What's driving it")
+top = drivers.reindex(drivers.abs().sort_values(ascending=False).index).head(6)
+st.bar_chart(pd.DataFrame({"effect (pts)": top.values}, index=[LABELS.get(k, k) for k in top.index]),
+             horizontal=True)
+st.caption("Bars show how much each factor pushes the prediction up or down from the average player.")
+
+# TODO (Quang): last-10-games chart, opponent defense comparison, model accuracy page

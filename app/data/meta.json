@@ -1,0 +1,73 @@
+{
+  "features": [
+    "pts_l5",
+    "pts_l10",
+    "pts_szn",
+    "min_l5",
+    "min_l10",
+    "fga_l10",
+    "fta_l10",
+    "fg3a_l10",
+    "starter_rate_l10",
+    "games_played_szn",
+    "opp_drtg_l10",
+    "opp_pace_l10",
+    "team_pace_l10",
+    "home",
+    "rest_days",
+    "b2b",
+    "opp_pts_allowed_G",
+    "opp_pts_allowed_F",
+    "opp_pts_allowed_C",
+    "opp_pts_allowed_pos",
+    "opp_pts_allowed_pos_rel",
+    "usg_l5",
+    "usg_l10",
+    "ts_l10",
+    "usg_szn",
+    "tm_out_min",
+    "tm_out_usg",
+    "tm_out_count"
+  ],
+  "test_mae": 4.48,
+  "test_season": "2023-24",
+  "data_through": "2024-04-14",
+  "ranges": [
+    {
+      "lo": 0.0,
+      "hi": 5.0,
+      "q10": -3.6048429965972897,
+      "q90": 5.718085217475893
+    },
+    {
+      "lo": 5.0,
+      "hi": 10.0,
+      "q10": -5.666055202484131,
+      "q90": 7.553173065185547
+    },
+    {
+      "lo": 10.0,
+      "hi": 15.0,
+      "q10": -7.408012962341309,
+      "q90": 8.656005096435546
+    },
+    {
+      "lo": 15.0,
+      "hi": 20.0,
+      "q10": -8.516082382202148,
+      "q90": 10.122387313842776
+    },
+    {
+      "lo": 20.0,
+      "hi": 25.0,
+      "q10": -9.833404541015625,
+      "q90": 10.228869247436522
+    },
+    {
+      "lo": 25.0,
+      "hi": 100.0,
+      "q10": -10.60907402038574,
+      "q90": 10.618816757202145
+    }
+  ]
+}
