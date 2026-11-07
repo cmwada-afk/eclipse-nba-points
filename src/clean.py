@@ -43,6 +43,10 @@ def clean_teams():
     })[["season", "game_id", "game_date", "team_id", "team", "matchup", "wl",
         "game_min", "pts", "fgm", "fga", "fg3a", "fta", "oreb", "tov"]]
     t["game_date"] = pd.to_datetime(t["game_date"]).dt.normalize()
+    # One abbreviation per franchise: use the most recent one for each team_id
+    latest = t.sort_values("game_date").groupby("team_id")["team"].last()
+    print("team rows relabeled:", (t["team"] != t["team_id"].map(latest)).sum())
+    t["team"] = t["team_id"].map(latest)
     t["home"] = t["matchup"].str.contains("vs.").astype(int)
     t["poss"] = possessions(t.fga, t.fta, t.oreb, t.tov)
 
@@ -75,6 +79,9 @@ def clean_players(teams):
     p["played"] = (p["min"] > 0).astype(int)
     p["starter"] = p["position"].notna().astype(int)   # NBA.com lists a position only for starters
     p = p.drop_duplicates(["game_id", "player_id"])
+    latest = teams.drop_duplicates("team_id").set_index("team_id")["team"]
+    p["team"] = p["team_id"].map(latest)
+    assert p["team"].notna().all(), "player rows with a team_id not in team logs"
 
     # team totals for usage rate
     tm = teams[["game_id", "team_id", "game_min", "fga", "fta", "tov", "home", "opp", "opp_team_id"]]
