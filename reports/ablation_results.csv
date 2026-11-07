@@ -2,7 +2,7 @@ model,test_MAE,n_features,trees
 Baseline: last-5 avg,4.774,,
 Baseline: last-10 avg,4.673,,
 Baseline: season-to-date avg,4.64,,
-XGBoost A. form,4.514,10.0,386.0
-XGBoost B. form + matchup,4.517,16.0,348.0
-XGBoost C. form + matchup + usage,4.504,20.0,319.0
-XGBoost D. all (+ teammates out),4.478,23.0,507.0
+XGBoost A. form,4.515,10.0,427.0
+XGBoost B. form + matchup,4.515,21.0,364.0
+XGBoost C. form + matchup + usage,4.506,25.0,418.0
+XGBoost D. all (+ teammates out),4.48,28.0,526.0
