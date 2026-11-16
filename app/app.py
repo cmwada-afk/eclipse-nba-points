@@ -24,6 +24,10 @@ LABELS = {
     "usg_l10": "Usage rate, last 10", "ts_l10": "Shooting efficiency, last 10",
     "usg_szn": "Season usage rate", "tm_out_min": "Teammates out (minutes)",
     "tm_out_usg": "Teammates out (usage)", "tm_out_count": "Teammates out (count)",
+    "opp_pts_allowed_G": "Opponent pts allowed to guards", "opp_pts_allowed_F": "Opponent pts allowed to forwards",
+    "opp_pts_allowed_C": "Opponent pts allowed to centers",
+    "opp_pts_allowed_pos": "Opponent pts allowed to his position",
+    "opp_pts_allowed_pos_rel": "Opponent vs league, his position",
 }
 
 
@@ -73,7 +77,11 @@ own, o = teams[teams.team == p.team].iloc[0], teams[teams.team == opp].iloc[0]
 row = {**p.to_dict(), "opp_drtg_l10": o.drtg_l10, "opp_pace_l10": o.pace_l10,
        "team_pace_l10": own.pace_l10, "home": int(home), "rest_days": rest, "b2b": int(rest == 1),
        "tm_out_min": out_df.min_l10.sum(), "tm_out_usg": out_df.usg_l10.sum(),
-       "tm_out_count": len(out_df)}
+       "tm_out_count": len(out_df),
+       # points the opponent allows to guards / forwards / centers (+ the player's own position)
+       **{f"opp_pts_allowed_{k}": o[f"pts_allowed_{k}"] for k in "GFC"},
+       "opp_pts_allowed_pos": o[f"pts_allowed_{p.pos_pre}"],
+       "opp_pts_allowed_pos_rel": o[f"pts_allowed_rel_{p.pos_pre}"]}
 
 pred, lo, hi, drivers = predict(meta, booster, row)
 
