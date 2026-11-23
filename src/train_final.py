@@ -18,7 +18,7 @@ import pandas as pd
 from sklearn.metrics import mean_absolute_error
 from xgboost import XGBRegressor
 
-from build_features import GROUPS
+from build_features import GROUPS, add_position_labels
 
 ROOT = Path(__file__).resolve().parents[1]
 PROC, APP = ROOT / "data" / "processed", ROOT / "app" / "data"
@@ -28,11 +28,17 @@ VALID, TEST = ["2022-23"], ["2023-24"]
 FEATURES = [f for g in GROUPS.values() for f in g]
 
 
+# settings picked on 2022-23 by tune_models.py; starter settings if it hasn't been run
+PARAMS = {"max_depth": 6, "learning_rate": 0.03, "min_child_weight": 20}
+if (ROOT / "reports" / "best_params.json").exists():
+    PARAMS = json.loads((ROOT / "reports" / "best_params.json").read_text())["xgboost"]
+
+
 def train(d):
     tr, va, te = (d[d.season.isin(s)] for s in (TRAIN, VALID, TEST))
-    m = XGBRegressor(n_estimators=2000, learning_rate=0.03, max_depth=6, subsample=0.8,
-                     colsample_bytree=0.8, min_child_weight=20, objective="reg:absoluteerror",
-                     early_stopping_rounds=100, tree_method="hist", n_jobs=-1, random_state=42)
+    m = XGBRegressor(n_estimators=3000, subsample=0.8, colsample_bytree=0.8,
+                     objective="reg:absoluteerror", early_stopping_rounds=100,
+                     tree_method="hist", n_jobs=-1, random_state=42, **PARAMS)
     m.fit(tr[FEATURES], tr.pts, eval_set=[(va[FEATURES], va.pts)], verbose=False)
     pred = m.predict(te[FEATURES])
     mae = mean_absolute_error(te.pts, pred)
@@ -71,16 +77,51 @@ def player_state(p):
             "usg_l5": lastn(s.usg, 5), "usg_l10": lastn(s.usg, 10), "ts_l10": lastn(s.ts, 10),
             "usg_szn": s.usg.mean(),
         })
-    return pd.DataFrame(rows).round(3)
+    out = pd.DataFrame(rows)
+    return out.merge(next_position(p), on="player_id", how="left").round(3)
 
 
-def team_state(t):
+def labeled_games(p):
+    """Played games with pos_lbl (position used to bucket points), same rule as build_features."""
+    g = p[p.played == 1].sort_values(["player_id", "game_date"]).copy()
+    return add_position_labels(g)
+
+
+def next_position(p):
+    """pos_pre going into the NEXT game: most common listed position over the player's starts
+    in his last 40 played games (latest game included); no starts -> "F"."""
+    g = p[p.played == 1].sort_values(["player_id", "game_date"])
+    last40 = g.groupby("player_id").tail(40)
+    starts = last40[last40.position.isin(["G", "F", "C"])]
+    top = (starts.groupby(["player_id", "position"]).size().unstack(fill_value=0)
+           .reindex(columns=["G", "F", "C"], fill_value=0).idxmax(axis=1))
+    ids = g.player_id.unique()
+    return pd.DataFrame({"player_id": ids, "pos_pre": top.reindex(ids).fillna("F").values})
+
+
+def pos_allowed_state(p):
+    """Points each defense allowed to G / F / C over its last 10 games (latest included), and the
+    same minus the league average over the last 60 game days -- mirrors pts_allowed_by_position."""
+    g = labeled_games(p)
+    a = (g.groupby(["game_id", "opp_team_id", "game_date", "pos_lbl"])["pts"].sum()
+          .unstack(fill_value=0).reindex(columns=["G", "F", "C"], fill_value=0).reset_index()
+          .rename(columns={"opp_team_id": "team_id"}).sort_values("game_date"))
+    out = a.groupby("team_id")[["G", "F", "C"]].apply(lambda x: x.tail(10).mean())
+    lg = a.groupby("game_date")[["G", "F", "C"]].mean().tail(60).mean()
+    res = pd.DataFrame(index=out.index)
+    for k in "GFC":
+        res[f"pts_allowed_{k}"] = out[k]
+        res[f"pts_allowed_rel_{k}"] = out[k] - lg[k]
+    return res.reset_index()
+
+
+def team_state(t, p):
     season = t.season.max()
     s = t[t.season == season].sort_values("game_date")
     out = s.groupby(["team_id", "team"]).agg(
         drtg_l10=("drtg", lambda x: x.tail(10).mean()),
         pace_l10=("pace", lambda x: x.tail(10).mean())).reset_index()
-    return out.round(2)
+    return out.merge(pos_allowed_state(p), on="team_id", how="left").round(2)
 
 
 def main():
@@ -91,12 +132,12 @@ def main():
 
     p = pd.read_csv(PROC / "player_game_logs.csv", parse_dates=["game_date"])
     t = pd.read_csv(PROC / "team_game_logs.csv", parse_dates=["game_date"])
-    ps, ts = player_state(p), team_state(t)
+    ps, ts = player_state(p), team_state(t, p)
     ps.to_csv(APP / "player_state.csv", index=False)
     ts.to_csv(APP / "team_state.csv", index=False)
 
     meta = {"features": FEATURES, "test_mae": round(float(mae), 3), "test_season": TEST[0],
-            "data_through": str(p.game_date.max().date()), "ranges": ranges}
+            "data_through": str(p.game_date.max().date()), "ranges": ranges, "params": PARAMS}
     (APP / "meta.json").write_text(json.dumps(meta, indent=2))
     print(f"test MAE {mae:.3f} | {len(ps)} players, {len(ts)} teams -> {APP}")
 

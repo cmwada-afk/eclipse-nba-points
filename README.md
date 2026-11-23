@@ -17,6 +17,8 @@ python src/get_data.py          # ~80 MB, 2010-11 → 2023-24 regular seasons
 python src/clean.py             # → data/processed/player_game_logs.csv, team_game_logs.csv
 python src/build_features.py    # → data/processed/model_table.csv (pre-game features only)
 python src/train_baseline.py    # → reports/ablation_results.csv, feature_importance.csv
+python src/tune_models.py       # → reports/model_comparison.csv, ablation_final.csv, best_params.json (~12 min)
+python src/train_final.py       # → app/data/ (uses reports/best_params.json)
 ```
 
 Newer seasons (run on your own laptop; NBA.com blocks most cloud servers):

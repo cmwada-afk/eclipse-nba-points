@@ -1,0 +1,7 @@
+model,test_MAE,valid_MAE,settings
+Last-5 game average,4.774,,
+Last-10 game average,4.673,,
+Season average so far,4.64,,
+"XGBoost, starter settings",4.483,4.579,"{""max_depth"": 6, ""learning_rate"": 0.03, ""min_child_weight"": 20}"
+"XGBoost, tuned",4.481,4.578,"{""max_depth"": 6, ""learning_rate"": 0.03, ""min_child_weight"": 50}"
+"Random Forest, tuned",4.531,4.622,"{""max_depth"": 12, ""min_samples_leaf"": 50, ""max_features"": 0.5}"

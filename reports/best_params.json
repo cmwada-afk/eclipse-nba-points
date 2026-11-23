@@ -1,0 +1,12 @@
+{
+  "xgboost": {
+    "max_depth": 6,
+    "learning_rate": 0.03,
+    "min_child_weight": 50
+  },
+  "random_forest": {
+    "max_depth": 12,
+    "min_samples_leaf": 50,
+    "max_features": 0.5
+  }
+}
