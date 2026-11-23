@@ -50,7 +50,10 @@ def train(d):
     ranges = [{"lo": float(b.left), "hi": float(b.right),
                "q10": float(g.err.quantile(0.10)), "q90": float(g.err.quantile(0.90))}
               for b, g in res.groupby("bin", observed=True)]
-    return m, mae, ranges
+    keep = ["player_id", "player", "team", "opp", "game_date", "season", "pts", "pts_szn", "min_l10"]
+    out = te[[c for c in keep if c in te.columns]].copy()
+    out["pred"] = pred
+    return m, mae, ranges, out
 
 
 def lastn(s, n):
@@ -123,18 +126,28 @@ def team_state(t, p):
         pace_l10=("pace", lambda x: x.tail(10).mean())).reset_index()
     return out.merge(pos_allowed_state(p), on="team_id", how="left").round(2)
 
+def recent_games(p, keep_ids, n=10):
+    g = p[(p.played == 1) & p.player_id.isin(keep_ids)].sort_values("game_date")
+    out = g.groupby("player_id").tail(n)
+    out = out.sort_values(["player_id", "game_date"], ascending=[True, False])
+    out = out[["player_id", "player", "team", "game_date", "opp", "home", "pts", "min"]].copy()
+    out["game_date"] = out.game_date.dt.date.astype(str)
+    return out
 
 def main():
     APP.mkdir(parents=True, exist_ok=True)
     d = pd.read_csv(PROC / "model_table.csv")
-    m, mae, ranges = train(d)
+    m, mae, ranges, tp = train(d)
     m.save_model(APP / "model.json")
+    tp.round(3).to_csv(APP / "test_predictions.csv", index=False)
 
     p = pd.read_csv(PROC / "player_game_logs.csv", parse_dates=["game_date"])
     t = pd.read_csv(PROC / "team_game_logs.csv", parse_dates=["game_date"])
     ps, ts = player_state(p), team_state(t, p)
     ps.to_csv(APP / "player_state.csv", index=False)
     ts.to_csv(APP / "team_state.csv", index=False)
+    rg = recent_games(p, ps.player_id)
+    rg.to_csv(APP / "recent_games.csv", index=False)
 
     meta = {"features": FEATURES, "test_mae": round(float(mae), 3), "test_season": TEST[0],
             "data_through": str(p.game_date.max().date()), "ranges": ranges, "params": PARAMS}
